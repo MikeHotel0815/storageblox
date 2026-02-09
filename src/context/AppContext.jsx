@@ -1,5 +1,6 @@
 import { createContext, useContext, useReducer } from 'react';
 import { calculateGrid, initializeBoxes, canMerge } from '../lib/gridCalculator';
+import { DEFAULT_PRINTER } from '../lib/printerProfiles';
 
 const AppContext = createContext();
 
@@ -13,6 +14,7 @@ const defaultParams = {
   cornerRadius: 3.0,
   cornerMode: 'outer',
   generateSpacers: false,
+  printer: DEFAULT_PRINTER,
 };
 
 function reducer(state, action) {

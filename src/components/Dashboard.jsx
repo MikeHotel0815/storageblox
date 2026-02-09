@@ -1,4 +1,5 @@
 import { useApp } from '../context/AppContext';
+import { PRINTERS, getPrinterBrands } from '../lib/printerProfiles';
 
 function ParamInput({ label, unit, paramKey, min = 0, step = 1 }) {
   const { state, dispatch } = useApp();
@@ -32,6 +33,36 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4 p-4 overflow-y-auto">
+      <div>
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Drucker</h3>
+        <div className="flex flex-col gap-2">
+          <select
+            value={params.printer}
+            onChange={e => dispatch({ type: 'SET_PARAM', key: 'printer', value: e.target.value })}
+            className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white
+                       focus:border-cyan-500 focus:outline-none"
+          >
+            {Array.from(getPrinterBrands()).map(([brand, printers]) => (
+              <optgroup key={brand} label={brand}>
+                {printers.map(p => (
+                  <option key={p.key} value={p.key}>
+                    {p.name} ({p.plate[0]}x{p.plate[1]}mm)
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {params.printer !== 'custom' && PRINTERS[params.printer] && (
+            <div className="text-[10px] text-slate-500">
+              Bauplatte: {PRINTERS[params.printer].plate[0]} x {PRINTERS[params.printer].plate[1]} mm
+              &middot; Höhe: {PRINTERS[params.printer].height} mm
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="border-t border-slate-700" />
+
       <div>
         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Schublade</h3>
         <div className="flex flex-col gap-2">
