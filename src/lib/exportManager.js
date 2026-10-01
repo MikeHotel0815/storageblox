@@ -16,11 +16,92 @@ function generateBoxSTL(spanCols, spanRows, params) {
   return stl;
 }
 
-function generateSpacerSTL(width, depth, height, cornerRadius) {
-  const geo = createSpacerGeometry(width, depth, height, cornerRadius);
+function generateSpacerSTL(width, depth, height, wallThickness, cornerRadius) {
+  const geo = createSpacerGeometry(width, depth, height, wallThickness, cornerRadius);
   const stl = geometryToSTLBinary(geo);
   geo.dispose();
   return stl;
+}
+
+/**
+ * Split a spacer into pieces that fit the build plate.
+ * Repeatedly halves the largest non-fitting dimension.
+ * Returns array of { width, depth, count }.
+ */
+export function splitForPlate(width, depth, plateW, plateD) {
+  const fits = (w, d) =>
+    (w <= plateW && d <= plateD) || (d <= plateW && w <= plateD);
+
+  if (fits(width, depth)) {
+    return [{ width, depth, count: 1 }];
+  }
+
+  const pieces = [];
+
+  function split(w, d, count) {
+    if (fits(w, d)) {
+      const existing = pieces.find(p =>
+        Math.abs(p.width - w) < 0.01 && Math.abs(p.depth - d) < 0.01);
+      if (existing) {
+        existing.count += count;
+      } else {
+        pieces.push({ width: w, depth: d, count });
+      }
+      return;
+    }
+    // Split along the larger dimension
+    if (d >= w) {
+      split(w, d / 2, count * 2);
+    } else {
+      split(w / 2, d, count * 2);
+    }
+  }
+
+  split(width, depth, 1);
+  return pieces;
+}
+
+/**
+ * Get all spacer parts for a given config, auto-split for the build plate.
+ * Returns array of { id, width, depth, height, count, label }.
+ */
+export function getSpacerParts(grid, params, plateW, plateD) {
+  const parts = [];
+  const spacerHeight = params.boxHeight / 2;
+  const { deadSpaceX, deadSpaceY } = grid;
+
+  if (deadSpaceX > 0.1) {
+    const pieces = splitForPlate(deadSpaceX, params.drawerDepth, plateW, plateD);
+    pieces.forEach((p, i) => {
+      const suffix = pieces.length > 1 ? `_${i + 1}` : '';
+      parts.push({
+        id: `spacer_x${suffix}`,
+        width: p.width,
+        depth: p.depth,
+        height: spacerHeight,
+        count: p.count,
+        label: `Spacer X${pieces.length > 1 ? ` (${p.width.toFixed(0)}x${p.depth.toFixed(0)})` : ''}`,
+      });
+    });
+  }
+
+  if (deadSpaceY > 0.1) {
+    const sw = params.drawerWidth - (deadSpaceX > 0.1 ? deadSpaceX : 0);
+    const pieces = splitForPlate(sw, deadSpaceY, plateW, plateD);
+    pieces.forEach((p, i) => {
+      const suffix = pieces.length > 1 ? `_${i + 1}` : '';
+      parts.push({
+        id: `spacer_y${suffix}`,
+        width: p.width,
+        depth: p.depth,
+        height: spacerHeight,
+        count: p.count,
+        label: `Spacer Y${pieces.length > 1 ? ` (${p.width.toFixed(0)}x${p.depth.toFixed(0)})` : ''}`,
+      });
+    });
+  }
+
+  return parts;
 }
 
 export function exportSingleBox(spanCols, spanRows, params) {
@@ -32,6 +113,8 @@ export function exportSingleBox(spanCols, spanRows, params) {
 export async function exportAllAsZip(boxes, grid, params) {
   const zip = new JSZip();
   const boxTypes = getBoxTypes(boxes);
+  const printer = PRINTERS[params.printer] || PRINTERS['bambu-h2s'];
+  const [plateW, plateD] = printer.plate;
 
   // Add box STLs
   for (const bt of boxTypes) {
@@ -39,18 +122,11 @@ export async function exportAllAsZip(boxes, grid, params) {
     zip.file(`box_${bt.spanCols}x${bt.spanRows}.stl`, stl);
   }
 
-  // Add spacers if enabled
-  if (params.generateSpacers) {
-    const { deadSpaceX, deadSpaceY } = grid;
-    if (deadSpaceX > 0.1) {
-      const stl = generateSpacerSTL(deadSpaceX, params.drawerDepth, params.boxHeight, 0);
-      zip.file('spacer_x.stl', stl);
-    }
-    if (deadSpaceY > 0.1) {
-      const spacerWidth = params.drawerWidth - (deadSpaceX > 0.1 ? deadSpaceX : 0);
-      const stl = generateSpacerSTL(spacerWidth, deadSpaceY, params.boxHeight, 0);
-      zip.file('spacer_y.stl', stl);
-    }
+  // Add spacers if enabled (hollow, half box height, auto-split for plate)
+  const spacerParts = params.generateSpacers ? getSpacerParts(grid, params, plateW, plateD) : [];
+  for (const sp of spacerParts) {
+    const stl = generateSpacerSTL(sp.width, sp.depth, sp.height, params.wallThickness, 0);
+    zip.file(`${sp.id}.stl`, stl);
   }
 
   // Add BOM
@@ -65,13 +141,11 @@ export async function exportAllAsZip(boxes, grid, params) {
     const { width, depth } = getBoxDimensions(bt.spanCols, bt.spanRows, params.gridSize, params.tolerance);
     bom += `  ${bt.spanCols}x${bt.spanRows} (${width.toFixed(1)} x ${depth.toFixed(1)} mm) - ${bt.count} piece(s)\n`;
   }
-  if (params.generateSpacers) {
-    const { deadSpaceX, deadSpaceY } = grid;
-    bom += '\nSpacers:\n';
-    if (deadSpaceX > 0.1) bom += `  X-Spacer: ${deadSpaceX.toFixed(1)} x ${params.drawerDepth} mm - 1 piece\n`;
-    if (deadSpaceY > 0.1) {
-      const sw = params.drawerWidth - (deadSpaceX > 0.1 ? deadSpaceX : 0);
-      bom += `  Y-Spacer: ${sw.toFixed(1)} x ${deadSpaceY.toFixed(1)} mm - 1 piece\n`;
+  if (spacerParts.length > 0) {
+    const sh = (params.boxHeight / 2).toFixed(1);
+    bom += `\nSpacers (hollow, half height = ${sh} mm):\n`;
+    for (const sp of spacerParts) {
+      bom += `  ${sp.label}: ${sp.width.toFixed(1)} x ${sp.depth.toFixed(1)} x ${sh} mm - ${sp.count} piece(s)\n`;
     }
   }
   zip.file('BOM.txt', bom);
@@ -99,21 +173,13 @@ export async function exportAs3MF(boxes, grid, params, printerKey) {
     geometries.set(id, { geometry: geo, objectId: objectId++, label: `Box ${bt.spanCols}x${bt.spanRows}` });
   }
 
-  // Add spacers
+  // Add spacers (auto-split for plate)
   if (params.generateSpacers) {
-    const { deadSpaceX, deadSpaceY } = grid;
-    if (deadSpaceX > 0.1) {
-      const id = 'spacer_x';
-      packItems.push({ id, width: deadSpaceX, depth: params.drawerDepth, count: 1, label: 'Spacer X' });
-      const geo = createSpacerGeometry(deadSpaceX, params.drawerDepth, params.boxHeight, 0);
-      geometries.set(id, { geometry: geo, objectId: objectId++, label: 'Spacer X' });
-    }
-    if (deadSpaceY > 0.1) {
-      const sw = params.drawerWidth - (deadSpaceX > 0.1 ? deadSpaceX : 0);
-      const id = 'spacer_y';
-      packItems.push({ id, width: sw, depth: deadSpaceY, count: 1, label: 'Spacer Y' });
-      const geo = createSpacerGeometry(sw, deadSpaceY, params.boxHeight, 0);
-      geometries.set(id, { geometry: geo, objectId: objectId++, label: 'Spacer Y' });
+    const spacerParts = getSpacerParts(grid, params, plateW, plateD);
+    for (const sp of spacerParts) {
+      packItems.push({ id: sp.id, width: sp.width, depth: sp.depth, count: sp.count, label: sp.label, height: sp.height });
+      const geo = createSpacerGeometry(sp.width, sp.depth, sp.height, params.wallThickness, 0);
+      geometries.set(sp.id, { geometry: geo, objectId: objectId++, label: sp.label });
     }
   }
 

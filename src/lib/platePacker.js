@@ -20,12 +20,13 @@ export function packOnPlates(items, plateWidth, plateDepth, maxHeight, partHeigh
     const d = item.depth;
     const fitsNormal = w + SPACING <= plateWidth && d + SPACING <= plateDepth;
     const fitsRotated = d + SPACING <= plateWidth && w + SPACING <= plateDepth;
-    const fitsTall = partHeight <= maxHeight;
+    const itemHeight = item.height || partHeight;
+    const fitsTall = itemHeight <= maxHeight;
 
     if (!fitsTall) {
       oversized.push({
         ...item,
-        reason: `Höhe ${partHeight}mm übersteigt max. Druckhöhe ${maxHeight}mm`,
+        reason: `Höhe ${itemHeight}mm übersteigt max. Druckhöhe ${maxHeight}mm`,
       });
     } else if (!fitsNormal && !fitsRotated) {
       oversized.push({
