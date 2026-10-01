@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { getBoxTypes } from '../lib/gridCalculator';
 import { getBoxDimensions } from '../lib/boxGeometry';
-import { exportSingleBox, exportAllAsZip, exportAs3MF } from '../lib/exportManager';
+import { exportSingleBox, exportAllAsZip, exportAs3MF, getSpacerParts } from '../lib/exportManager';
 import { PRINTERS } from '../lib/printerProfiles';
 import { packingSummary } from '../lib/platePacker';
 
@@ -13,6 +13,12 @@ export default function ExportPanel() {
   const [exporting, setExporting] = useState(false);
 
   const printer = PRINTERS[params.printer] || PRINTERS['bambu-h2s'];
+  const [plateW, plateD] = printer.plate;
+
+  const spacerParts = useMemo(() => {
+    if (!params.generateSpacers) return [];
+    return getSpacerParts(grid, params, plateW, plateD);
+  }, [grid, params, plateW, plateD]);
 
   const summary = useMemo(() => {
     const items = [];
@@ -25,17 +31,11 @@ export default function ExportPanel() {
         label: `Box ${bt.spanCols}x${bt.spanRows}`,
       });
     }
-    if (params.generateSpacers) {
-      if (grid.deadSpaceX > 0.1) {
-        items.push({ id: 'spacer_x', width: grid.deadSpaceX, depth: params.drawerDepth, count: 1, label: 'Spacer X' });
-      }
-      if (grid.deadSpaceY > 0.1) {
-        const sw = params.drawerWidth - (grid.deadSpaceX > 0.1 ? grid.deadSpaceX : 0);
-        items.push({ id: 'spacer_y', width: sw, depth: grid.deadSpaceY, count: 1, label: 'Spacer Y' });
-      }
+    for (const sp of spacerParts) {
+      items.push({ id: sp.id, width: sp.width, depth: sp.depth, count: sp.count, label: sp.label, height: sp.height });
     }
-    return packingSummary(items, printer.plate[0], printer.plate[1], printer.height, params.boxHeight);
-  }, [boxTypes, params, grid, printer]);
+    return packingSummary(items, plateW, plateD, printer.height, params.boxHeight);
+  }, [boxTypes, params, spacerParts, plateW, plateD, printer]);
 
   const handle3MFExport = async () => {
     setExporting(true);
@@ -114,19 +114,17 @@ export default function ExportPanel() {
         })}
       </div>
 
-      {params.generateSpacers && (grid.deadSpaceX > 0.1 || grid.deadSpaceY > 0.1) && (
+      {spacerParts.length > 0 && (
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] text-slate-500 uppercase">Spacer</span>
-          {grid.deadSpaceX > 0.1 && (
-            <div className="text-xs text-green-400 bg-slate-800 rounded px-2 py-1">
-              X-Spacer: {grid.deadSpaceX.toFixed(1)} x {params.drawerDepth} mm
+          <span className="text-[10px] text-slate-500 uppercase">Spacer (hohl, halbe Höhe)</span>
+          {spacerParts.map(sp => (
+            <div key={sp.id} className="text-xs text-green-400 bg-slate-800 rounded px-2 py-1 flex justify-between">
+              <span>{sp.label}</span>
+              <span className="text-slate-500">
+                {sp.width.toFixed(1)}x{sp.depth.toFixed(1)}x{sp.height.toFixed(0)}mm &middot; {sp.count}x
+              </span>
             </div>
-          )}
-          {grid.deadSpaceY > 0.1 && (
-            <div className="text-xs text-green-400 bg-slate-800 rounded px-2 py-1">
-              Y-Spacer: {(params.drawerWidth - (grid.deadSpaceX > 0.1 ? grid.deadSpaceX : 0)).toFixed(1)} x {grid.deadSpaceY.toFixed(1)} mm
-            </div>
-          )}
+          ))}
         </div>
       )}
     </div>

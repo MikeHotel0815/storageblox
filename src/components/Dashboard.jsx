@@ -1,7 +1,7 @@
 import { useApp } from '../context/AppContext';
 import { PRINTERS, getPrinterBrands } from '../lib/printerProfiles';
 
-function ParamInput({ label, unit, paramKey, min = 0, step = 1 }) {
+function ParamInput({ label, unit, paramKey, min = 0, max, step = 1 }) {
   const { state, dispatch } = useApp();
   const value = state.params[paramKey];
 
@@ -13,10 +13,11 @@ function ParamInput({ label, unit, paramKey, min = 0, step = 1 }) {
           type="number"
           value={value}
           min={min}
+          max={max}
           step={step}
           onChange={e => {
             const v = parseFloat(e.target.value);
-            if (!isNaN(v) && v >= min) dispatch({ type: 'SET_PARAM', key: paramKey, value: v });
+            if (!isNaN(v) && v >= min && (max === undefined || v <= max)) dispatch({ type: 'SET_PARAM', key: paramKey, value: v });
           }}
           className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white
                      focus:border-cyan-500 focus:outline-none transition-colors"
@@ -77,7 +78,7 @@ export default function Dashboard() {
         <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Raster</h3>
         <div className="flex flex-col gap-2">
           <ParamInput label="Rastermaß" unit="mm" paramKey="gridSize" min={5} step={0.5} />
-          <ParamInput label="Box-Höhe" unit="mm" paramKey="boxHeight" min={5} step={1} />
+          <ParamInput label="Box-Höhe" unit="mm" paramKey="boxHeight" min={10} max={99} step={1} />
           <ParamInput label="Wandstärke" unit="mm" paramKey="wallThickness" min={0.4} step={0.1} />
           <ParamInput label="Toleranz" unit="mm" paramKey="tolerance" min={0} step={0.05} />
         </div>

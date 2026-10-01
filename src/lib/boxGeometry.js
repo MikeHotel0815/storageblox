@@ -94,19 +94,51 @@ export function createHollowBoxGeometry(
   return merged;
 }
 
+const RIB_SPACING = 60; // mm — max distance between internal support ribs
+
 /**
- * Create solid spacer geometry (simple block with optional rounded outer corners).
- * Z-up orientation.
+ * Create hollow spacer geometry with internal ribs for stability.
+ * Open top, closed bottom. Ribs are added automatically when inner
+ * dimensions exceed RIB_SPACING. Z-up orientation.
  */
-export function createSpacerGeometry(width, depth, height, cornerRadius = 0) {
-  const r = Math.min(Math.max(cornerRadius, 0), width / 2, depth / 2);
-  const shape = roundedRectShape(width, depth, r, -width / 2, -depth / 2);
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: height,
-    bevelEnabled: false,
-    curveSegments: 6,
-  });
-  return geo;
+export function createSpacerGeometry(width, depth, height, wallThickness, cornerRadius = 0) {
+  const shell = createHollowBoxGeometry(width, depth, height, wallThickness, cornerRadius, 'outer');
+
+  const innerWidth = width - 2 * wallThickness;
+  const innerDepth = depth - 2 * wallThickness;
+  const ribHeight = height - wallThickness;
+
+  if (innerWidth <= RIB_SPACING && innerDepth <= RIB_SPACING) {
+    return shell;
+  }
+
+  const geos = [shell];
+
+  // Ribs perpendicular to X axis (spanning depth)
+  if (innerWidth > RIB_SPACING) {
+    const ribCount = Math.floor(innerWidth / RIB_SPACING);
+    const spacing = innerWidth / (ribCount + 1);
+    for (let i = 1; i <= ribCount; i++) {
+      const rib = new THREE.BoxGeometry(wallThickness, innerDepth, ribHeight);
+      rib.translate(-innerWidth / 2 + i * spacing, 0, wallThickness + ribHeight / 2);
+      geos.push(rib);
+    }
+  }
+
+  // Ribs perpendicular to Y axis (spanning width)
+  if (innerDepth > RIB_SPACING) {
+    const ribCount = Math.floor(innerDepth / RIB_SPACING);
+    const spacing = innerDepth / (ribCount + 1);
+    for (let i = 1; i <= ribCount; i++) {
+      const rib = new THREE.BoxGeometry(innerWidth, wallThickness, ribHeight);
+      rib.translate(0, -innerDepth / 2 + i * spacing, wallThickness + ribHeight / 2);
+      geos.push(rib);
+    }
+  }
+
+  const merged = mergeGeometries(geos);
+  for (const g of geos) g.dispose();
+  return merged;
 }
 
 /**

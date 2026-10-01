@@ -75,12 +75,13 @@ function BoxMesh({ box, params, isHovered }) {
 }
 
 function SpacerMeshX({ params, grid }) {
-  const { drawerDepth, boxHeight } = params;
+  const { drawerDepth, boxHeight, wallThickness } = params;
   const { deadSpaceX } = grid;
+  const spacerHeight = boxHeight / 2;
 
   const geometry = useMemo(() => {
-    return createSpacerGeometry(deadSpaceX, drawerDepth, boxHeight, 0);
-  }, [deadSpaceX, drawerDepth, boxHeight]);
+    return createSpacerGeometry(deadSpaceX, drawerDepth, spacerHeight, wallThickness, 0);
+  }, [deadSpaceX, drawerDepth, spacerHeight, wallThickness]);
 
   // Right edge of drawer
   const posX = params.drawerWidth / 2 - deadSpaceX / 2;
@@ -93,13 +94,14 @@ function SpacerMeshX({ params, grid }) {
 }
 
 function SpacerMeshY({ params, grid }) {
-  const { drawerWidth, boxHeight } = params;
+  const { drawerWidth, boxHeight, wallThickness } = params;
   const { deadSpaceX, deadSpaceY } = grid;
+  const spacerHeight = boxHeight / 2;
 
   const spacerWidth = drawerWidth - (deadSpaceX > 0.1 ? deadSpaceX : 0);
   const geometry = useMemo(() => {
-    return createSpacerGeometry(spacerWidth, deadSpaceY, boxHeight, 0);
-  }, [spacerWidth, deadSpaceY, boxHeight]);
+    return createSpacerGeometry(spacerWidth, deadSpaceY, spacerHeight, wallThickness, 0);
+  }, [spacerWidth, deadSpaceY, spacerHeight, wallThickness]);
 
   // Back edge of drawer, shifted left to avoid X spacer
   const posX = deadSpaceX > 0.1 ? -deadSpaceX / 2 : 0;
